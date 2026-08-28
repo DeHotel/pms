@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+// Un hotel = un tenant. Cada usuario pertenece a un único hotel (el email de
+// login es único en todo el sistema, así que no hace falta elegir hotel al
+// loguearse); el resto de las entidades (habitaciones, huéspedes, compañías,
+// reservas) cuelgan del hotel de quien las creó.
+model Hotel {
+  id           Int      @id @default(autoincrement())
+  name         String
+  primaryColor String   @default("#2563eb")
+  currency     String   @default("ARS")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users        User[]
+  roomTypes    RoomType[]
+  rooms        Room[]
+  guests       Guest[]
+  companies    Company[]
+  reservations Reservation[]
+
+  @@map("hotels")
+}
+
+// Roles esperados: "SUPER_ADMIN" | "ADMIN" | "RECEPCION" | "HOUSEKEEPING"
+// SUPER_ADMIN no pertenece a ningún hotel (hotelId null): ve y administra todos
+// los hoteles del sistema (crear hoteles nuevos, dar de alta usuarios en
+// cualquiera de ellos). El resto de los roles pertenecen a un único hotel.
+// SQL Server no tiene enums nativos soportados por Prisma, se valida a nivel de app.
+model User {
+  id           Int      @id @default(autoincrement())
+  hotelId      Int?
+  hotel        Hotel?   @relation(fields: [hotelId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("RECEPCION")
+  active       Boolean  @default(true)
+  photoUrl     String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("users")
+}
+
+model RoomType {
+  id          Int      @id @default(autoincrement())
+  hotelId     Int
+  hotel       Hotel    @relation(fields: [hotelId], references: [id])
+  name        String
+  description String?
+  basePrice   Decimal  @db.Decimal(10, 2)
+  capacity    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rooms Room[]
+
+  @@unique([hotelId, name])
+  @@map("room_types")
+}
+
+// Estados esperados: "DISPONIBLE" | "OCUPADA" | "LIMPIEZA" | "MANTENIMIENTO" | "FUERA_DE_SERVICIO"
+// SQL Server no tiene enums nativos soportados por Prisma, se valida a nivel de app.
+model Room {
+  id         Int      @id @default(autoincrement())
+  hotelId    Int
+  hotel      Hotel    @relation(fields: [hotelId], references: [id], onUpdate: NoAction)
+  number     String
+  floor      Int?
+  status     String   @default("DISPONIBLE")
+  notes      String?
+  roomTypeId Int
+  roomType   RoomType @relation(fields: [roomTypeId], references: [id], onUpdate: NoAction)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  reservations Reservation[]
+
+  @@unique([hotelId, number])
+  @@map("rooms")
+}
+
+model Guest {
+  id         Int      @id @default(autoincrement())
+  hotelId    Int
+  hotel      Hotel    @relation(fields: [hotelId], references: [id])
+  fullName   String
+  documentId String?
+  email      String?
+  phone      String?
+  notes      String?
+  photoUrl   String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  reservations Reservation[]
+
+  @@map("guests")
+}
+
+// Tipos esperados: "EMPRESA" | "AGENCIA"
+// SQL Server no tiene enums nativos soportados por Prisma, se valida a nivel de app.
+model Company {
+  id        Int      @id @default(autoincrement())
+  hotelId   Int
+  hotel     Hotel    @relation(fields: [hotelId], references: [id])
+  name      String
+  type      String   @default("EMPRESA")
+  email     String?
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reservations Reservation[]
+
+  @@unique([hotelId, name])
+  @@map("companies")
+}
+
+// Estados esperados: "PENDIENTE" | "CONFIRMADA" | "CHECK_IN" | "CHECK_OUT" | "CANCELADA"
+// Origenes esperados: "TELEFONO" | "EMAIL" | "PRESENCIAL" | "BOOKING" | "AIRBNB" | "WHATSAPP" | "OTRO"
+// Si companyId es null, la reserva es de un particular; si no, el tipo
+// (empresa/agencia) lo define el Company relacionado.
+// SQL Server no tiene enums nativos soportados por Prisma, se valida a nivel de app.
+model Reservation {
+  id          Int      @id @default(autoincrement())
+  hotelId     Int
+  hotel       Hotel    @relation(fields: [hotelId], references: [id], onUpdate: NoAction)
+  roomId      Int
+  room        Room     @relation(fields: [roomId], references: [id], onUpdate: NoAction)
+  guestId     Int
+  guest       Guest    @relation(fields: [guestId], references: [id], onUpdate: NoAction)
+  checkIn     DateTime
+  checkOut    DateTime
+  guestsCount Int      @default(1)
+  status      String   @default("PENDIENTE")
+  companyId   Int?
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  companion   String?
+  source      String   @default("OTRO")
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("reservations")
+}

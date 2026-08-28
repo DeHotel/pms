@@ -1,0 +1,21 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- AlterTable
+ALTER TABLE [dbo].[reservations] ADD [companion] NVARCHAR(1000),
+[company] NVARCHAR(1000),
+[source] NVARCHAR(1000) NOT NULL CONSTRAINT [reservations_source_df] DEFAULT 'OTRO';
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH
